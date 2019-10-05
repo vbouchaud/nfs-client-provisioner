@@ -12,38 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ifeq ($(REGISTRY),)
-        REGISTRY = quay.io/external_storage/
-endif
-ifeq ($(VERSION),)
-        VERSION = latest
-endif
-IMAGE = $(REGISTRY)nfs-client-provisioner:$(VERSION)
-IMAGE_ARM = $(REGISTRY)nfs-client-provisioner-arm:$(VERSION) 
-MUTABLE_IMAGE = $(REGISTRY)nfs-client-provisioner:latest
-MUTABLE_IMAGE_ARM = $(REGISTRY)nfs-client-provisioner-arm:latest
+APPNAME=nfs-client-provisioner
+REGISTRY=registry.aegir.bouchaud.org
+VERSION=v3.1.1
 
-all: build image build_arm image_arm 
-
-container: build image build_arm image_arm
+all: build
 
 build:
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o docker/x86_64/nfs-client-provisioner ./cmd/nfs-client-provisioner
-
-build_arm:
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -a -ldflags '-extldflags "-static"' -o docker/arm/nfs-client-provisioner ./cmd/nfs-client-provisioner 
-
-image:
-	docker build -t $(MUTABLE_IMAGE) docker/x86_64
-	docker tag $(MUTABLE_IMAGE) $(IMAGE)
-
-image_arm:
-	docker run --rm --privileged multiarch/qemu-user-static:register --reset
-	docker build -t $(MUTABLE_IMAGE_ARM) docker/arm
-	docker tag $(MUTABLE_IMAGE_ARM) $(IMAGE_ARM)
-
-push:
-	docker push $(IMAGE)
-	docker push $(MUTABLE_IMAGE)
-	docker push $(IMAGE_ARM)
-	docker push $(MUTABLE_IMAGE_ARM)
+	@docker buildx build --platform "linux/amd64,linux/arm64" . --tag $(REGISTRY)/$(APPNAME):$(VERSION) --push
+	@docker buildx build --platform "linux/amd64,linux/arm64" . --tag $(REGISTRY)/$(APPNAME):latest --push
