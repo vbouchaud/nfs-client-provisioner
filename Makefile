@@ -18,7 +18,7 @@ PKG := bouchaud.org/${NAMESPACE}/${BIN}
 GO ?= go
 GOFMT ?= gofmt -s
 GOFILES := $(shell find . -name "*.go" -type f)
-GOVERSION := 1.13
+GOVERSION := $(shell go version | sed -r 's/go version go(.+)\s.+/\1/')
 PACKAGES ?= $(shell $(GO) list ./...)
 
 # This version-strategy uses git tags to set the version string
