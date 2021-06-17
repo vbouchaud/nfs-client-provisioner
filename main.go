@@ -36,7 +36,8 @@ import (
 )
 
 const (
-	provisionerNameKey = "PROVISIONER_NAME"
+	provisionerNameKey      = "PROVISIONER_NAME"
+	namespacedAnnotationKey = "nfs-provisioner.legion.bouchaud.org/shared-with-key"
 )
 
 type nfsProvisioner struct {
@@ -55,12 +56,17 @@ func (p *nfsProvisioner) Provision(options controller.ProvisionOptions) (*v1.Per
 	if options.PVC.Spec.Selector != nil {
 		return nil, fmt.Errorf("claim Selector is not supported")
 	}
-		glog.V(4).Infof("nfs provisioner: VolumeOptions %v", options)
+	glog.V(4).Infof("nfs provisioner: VolumeOptions %v", options)
 
-	pvcNamespace := options.PVC.Namespace
-	pvcName := options.PVC.Name
+	var pvName string
+	var namespace string
 
-	pvName := strings.Join([]string{pvcNamespace, pvcName, options.PVName}, "-")
+	namespace = options.PVC.Namespace
+	if _, ok := options.PVC.Annotations[namespacedAnnotationKey]; ok {
+		namespace = options.PVC.Annotations[namespacedAnnotationKey]
+	}
+
+	pvName = strings.Join([]string{namespace, options.PVC.Name, options.PVName}, "-")
 
 	fullPath := filepath.Join(mountPath, pvName)
 	glog.V(4).Infof("creating path %s", fullPath)
