@@ -4,7 +4,7 @@ go 1.13
 
 require (
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
-	github.com/kubernetes-sigs/sig-storage-lib-external-provisioner v4.0.1+incompatible
+	github.com/kubernetes-sigs/sig-storage-lib-external-provisioner v4.1.0+incompatible
 	github.com/miekg/dns v1.1.22 // indirect
 	github.com/prometheus/client_golang v1.1.0 // indirect
 	k8s.io/api v0.0.0-20190918155943-95b840bb6a1f
