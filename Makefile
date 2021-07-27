@@ -8,13 +8,12 @@ RESET  := $(shell tput -Txterm sgr0)
 # The binary to build (just the basename).
 PWD := $(shell pwd)
 NOW := $(shell date +%s)
-BIN := nfs-client-provisioner
+APPNAME := nfs-client-provisioner
+BIN ?= $(APPNAME)
 
-ifeq ($(ORG),)
-	ORG := registry.aegir.bouchaud.org
-endif
-NAMESPACE := legion/kubernetes
-PKG := bouchaud.org/${NAMESPACE}/${BIN}
+ORG ?= registry.aegir.bouchaud.org
+PKG := bouchaud.org/legion/kubernetes/${BIN}
+PLATFORM ?= "linux/arm/v7,linux/arm64/v8,linux/amd64"
 GO ?= go
 GOFMT ?= gofmt -s
 GOFILES := $(shell find . -name "*.go" -type f)
@@ -24,16 +23,11 @@ PACKAGES ?= $(shell $(GO) list ./...)
 # This version-strategy uses git tags to set the version string
 GIT_TAG := $(shell git describe --tags --always --dirty || echo unsupported)
 GIT_COMMIT := $(shell git rev-parse --short HEAD || echo unsupported)
-GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
-GIT_BRANCH_CLEAN := $(shell echo $(GIT_BRANCH) | sed -e "s/[^[:alnum:]]/-/g")
 BUILDTIME := $(shell date -u +"%FT%TZ%:z")
-ARCH := $(shell uname -m)
+TAG ?= $(GIT_TAG)
+VERSION ?= $(GIT_TAG)
 
-ifeq ($(TAG),)
-	TAG := $(GIT_TAG)
-endif
-
-.PHONY: fmt fmt-check vet test test-coverage cover install hooks docker help
+.PHONY: fmt fmt-check vet test test-coverage cover install docker help
 default: help
 
 ## Format go source code
@@ -66,73 +60,17 @@ cover: test-coverage
 	$(GO) tool cover -html=coverage.out
 
 ## Install dependencies used for development
-install:
+install: tidy
 	$(GO) mod download
 
-# base image are removed between each build for both amd64 and arm64:
-# https://github.com/moby/moby/issues/36552#issuecomment-538061565 -
-# it's necessary for multiarch build if we want to be able to select the
-# correct arch for base image since both arch use the same tag
-
-## Build the amd64 docker image
-docker-amd64:
-	@docker rmi --force --no-prune $(shell grep FROM Dockerfile | sed -E 's/from ([^ ]+).*/\1/mig')
-	@docker build \
-		--pull \
-		--platform "linux/amd64" \
-		--tag "$(ORG)/$(BIN):amd64-latest" \
-		.
-
-## Build the arm64 docker image
-docker-arm64:
-	@docker rmi --force --no-prune $(shell grep FROM Dockerfile | sed -E 's/from ([^ ]+).*/\1/mig')
-ifeq ($(ARCH),x86_64)
-	@docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-else
-	@echo "current arch is $(ARCH), expect the unexpected"
-endif
-	@docker build \
-		--pull \
-		--platform "linux/arm64" \
-		--tag "$(ORG)/$(BIN):arm64-latest" \
-		.
-
 ## Build the docker images
-docker: docker-amd64 docker-arm64
-
-## Tag the latest docker image to current version, arm64
-tag-arm64: docker-arm64
-	@docker tag "$(ORG)/$(BIN):arm64-latest" "$(ORG)/$(BIN):arm64-$(TAG)"
-
-## Tag the latest docker image to current version, amd64
-tag-amd64: docker-amd64
-	@docker tag "$(ORG)/$(BIN):amd64-latest" "$(ORG)/$(BIN):amd64-$(TAG)"
-
-## Tag both amd64 and arm64 images
-tag: tag-arm64 tag-amd64
-
-## Push the latest and current version tags to registry, arm64
-push-arm64: tag-arm64
-	@docker push "$(ORG)/$(BIN):arm64-latest"
-	@docker push "$(ORG)/$(BIN):arm64-$(TAG)"
-
-## Push the latest and current version tags to registry, amd64
-push-amd64: tag-amd64
-	@docker push "$(ORG)/$(BIN):amd64-latest"
-	@docker push "$(ORG)/$(BIN):amd64-$(TAG)"
-
-## Push both amd64 and arm64 images
-push: push-arm64 push-amd64
-
-## Create the manifests for the current and latest version
-manifest: push
-	@docker manifest create "$(ORG)/$(BIN):latest" --amend "$(ORG)/$(BIN):arm64-latest" --amend "$(ORG)/$(BIN):amd64-latest"
-	@docker manifest create "$(ORG)/$(BIN):$(TAG)" --amend "$(ORG)/$(BIN):arm64-$(TAG)" --amend "$(ORG)/$(BIN):amd64-$(TAG)"
-
-## Push the manifests to the registry
-manifest-push: manifest
-	@docker manifest push "$(ORG)/$(BIN):latest" --purge
-	@docker manifest push "$(ORG)/$(BIN):$(TAG)" --purge
+docker:
+	@docker buildx build \
+		--push \
+		--platform $(PLATFORM) \
+		--tag $(ORG)/$(BIN):$(TAG) \
+		--tag $(ORG)/$(BIN):latest \
+		.
 
 ## Dev build outside of docker, not stripped
 dev:

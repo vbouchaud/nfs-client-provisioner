@@ -1,8 +1,12 @@
 # Kubernetes NFS-Client Provisioner
 
-[![Docker Repository on Quay](https://quay.io/repository/external_storage/nfs-client-provisioner/status "Docker Repository on Quay")](https://quay.io/repository/external_storage/nfs-client-provisioner)
+This repository is an extract from [kubernetes-incubator/external-storage](https://github.com/kubernetes-incubator/external-storage/tree/e35bdf47/nfs-client) since the upstream has been archived/discontinued.
 
 **nfs-client** is an automatic provisioner that use your *existing and already configured* NFS server to support dynamic provisioning of Kubernetes Persistent Volumes via Persistent Volume Claims. Persistent volumes are provisioned as ``${namespace}-${pvcName}-${pvName}``.
+
+# Distribution
+
+A docker image of this projet is available for arm/v7, arm64/v8, amd64 at [vbouchaud/nfs-client-provisioner](https://hub.docker.com/r/vbouchaud/nfs-client-provisioner) on docker hub. A mirror has been setup on quay.io at [vbouchaud/nfs-client-provisioner](https://quay.io/vbouchaud/nfs-client-provisioner)
 
 # How to deploy nfs-client to your cluster.
 
@@ -76,7 +80,7 @@ spec:
       serviceAccountName: nfs-client-provisioner
       containers:
         - name: nfs-client-provisioner
-          image: quay.io/external_storage/nfs-client-provisioner:latest
+          image: quay.io/vbouchaud/nfs-client-provisioner:latest
           volumeMounts:
             - name: nfs-client-root
               mountPath: /persistentvolumes
