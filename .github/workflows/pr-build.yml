@@ -15,7 +15,6 @@ jobs:
     strategy:
       matrix:
         go:
-          - 1.15
           - 1.16
           - 1.17
 
@@ -65,7 +64,3 @@ jobs:
               -X ${{ github.repository }}/version.BUILDTIME=${{ steps.prep.outputs.buildtime }} \
               -X ${{ github.repository }}/version.COMMITHASH=${{ github.sha }} \
               -s -w"
-
-      - name: Verify
-        run: |-
-          ./${{ secrets.APP_NAME }} --version

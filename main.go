@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -25,14 +26,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/golang/glog"
-	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
-	"k8s.io/api/core/v1"
+	"github.com/rs/zerolog/log"
+
+	core "k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v7/controller"
 )
 
 const (
@@ -52,11 +53,11 @@ const (
 
 var _ controller.Provisioner = &nfsProvisioner{}
 
-func (p *nfsProvisioner) Provision(options controller.ProvisionOptions) (*v1.PersistentVolume, error) {
+func (p *nfsProvisioner) Provision(_ context.Context, options controller.ProvisionOptions) (*core.PersistentVolume, controller.ProvisioningState, error) {
 	if options.PVC.Spec.Selector != nil {
-		return nil, fmt.Errorf("claim Selector is not supported")
+		return nil, controller.ProvisioningFinished, fmt.Errorf("claim Selector is not supported")
 	}
-	glog.V(4).Infof("nfs provisioner: VolumeOptions %v", options)
+	log.Info().Msgf("nfs provisioner: VolumeOptions %v", options)
 
 	var pvName string
 	var namespace string
@@ -69,27 +70,27 @@ func (p *nfsProvisioner) Provision(options controller.ProvisionOptions) (*v1.Per
 	pvName = strings.Join([]string{namespace, options.PVC.Name, options.PVName}, "-")
 
 	fullPath := filepath.Join(mountPath, pvName)
-	glog.V(4).Infof("creating path %s", fullPath)
+	log.Info().Msgf("creating path %s", fullPath)
 	if err := os.MkdirAll(fullPath, 0777); err != nil {
-		return nil, errors.New("unable to create directory to provision new pv: " + err.Error())
+		return nil, controller.ProvisioningFinished, errors.New("unable to create directory to provision new pv: " + err.Error())
 	}
 	os.Chmod(fullPath, 0777)
 
 	path := filepath.Join(p.path, pvName)
 
-	pv := &v1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{
+	pv := &core.PersistentVolume{
+		ObjectMeta: meta.ObjectMeta{
 			Name: options.PVName,
 		},
-		Spec: v1.PersistentVolumeSpec{
+		Spec: core.PersistentVolumeSpec{
 			PersistentVolumeReclaimPolicy: *options.StorageClass.ReclaimPolicy,
 			AccessModes:                   options.PVC.Spec.AccessModes,
 			MountOptions:                  options.StorageClass.MountOptions,
-			Capacity: v1.ResourceList{
-				v1.ResourceName(v1.ResourceStorage): options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
+			Capacity: core.ResourceList{
+				core.ResourceName(core.ResourceStorage): options.PVC.Spec.Resources.Requests[core.ResourceName(core.ResourceStorage)],
 			},
-			PersistentVolumeSource: v1.PersistentVolumeSource{
-				NFS: &v1.NFSVolumeSource{
+			PersistentVolumeSource: core.PersistentVolumeSource{
+				NFS: &core.NFSVolumeSource{
 					Server:   p.server,
 					Path:     path,
 					ReadOnly: false,
@@ -97,28 +98,28 @@ func (p *nfsProvisioner) Provision(options controller.ProvisionOptions) (*v1.Per
 			},
 		},
 	}
-	return pv, nil
+	return pv, controller.ProvisioningFinished, nil
 }
 
-func getPersistentVolumeClass(volume *v1.PersistentVolume) string {
+func getPersistentVolumeClass(volume *core.PersistentVolume) string {
 	// Use beta annotation first
-	if class, found := volume.Annotations[v1.BetaStorageClassAnnotation]; found {
+	if class, found := volume.Annotations[core.BetaStorageClassAnnotation]; found {
 		return class
 	}
 
 	return volume.Spec.StorageClassName
 }
 
-func (p *nfsProvisioner) Delete(volume *v1.PersistentVolume) error {
+func (p *nfsProvisioner) Delete(ctx context.Context, volume *core.PersistentVolume) error {
 	path := volume.Spec.PersistentVolumeSource.NFS.Path
 	pvName := filepath.Base(path)
 	oldPath := filepath.Join(mountPath, pvName)
 	if _, err := os.Stat(oldPath); os.IsNotExist(err) {
-		glog.Warningf("path %s does not exist, deletion skipped", oldPath)
+		log.Warn().Msgf("path %s does not exist, deletion skipped", oldPath)
 		return nil
 	}
 	// Get the storage class for this volume.
-	storageClass, err := p.getClassForVolume(volume)
+	storageClass, err := p.getClassForVolume(ctx, volume)
 	if err != nil {
 		return err
 	}
@@ -137,13 +138,13 @@ func (p *nfsProvisioner) Delete(volume *v1.PersistentVolume) error {
 	}
 
 	archivePath := filepath.Join(mountPath, "archived-"+pvName)
-	glog.V(4).Infof("archiving path %s to %s", oldPath, archivePath)
+	log.Info().Msgf("archiving path %s to %s", oldPath, archivePath)
 	return os.Rename(oldPath, archivePath)
 
 }
 
 // getClassForVolume returns StorageClass
-func (p *nfsProvisioner) getClassForVolume(pv *v1.PersistentVolume) (*storage.StorageClass, error) {
+func (p *nfsProvisioner) getClassForVolume(ctx context.Context, pv *core.PersistentVolume) (*storage.StorageClass, error) {
 	if p.client == nil {
 		return nil, fmt.Errorf("Cannot get kube client")
 	}
@@ -151,7 +152,7 @@ func (p *nfsProvisioner) getClassForVolume(pv *v1.PersistentVolume) (*storage.St
 	if className == "" {
 		return nil, fmt.Errorf("Volume has no storage class")
 	}
-	class, err := p.client.StorageV1().StorageClasses().Get(className, metav1.GetOptions{})
+	class, err := p.client.StorageV1().StorageClasses().Get(ctx, className, meta.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -164,33 +165,26 @@ func main() {
 
 	server := os.Getenv("NFS_SERVER")
 	if server == "" {
-		glog.Fatal("NFS_SERVER not set")
+		log.Fatal().Msg("NFS_SERVER not set")
 	}
 	path := os.Getenv("NFS_PATH")
 	if path == "" {
-		glog.Fatal("NFS_PATH not set")
+		log.Fatal().Msg("NFS_PATH not set")
 	}
 	provisionerName := os.Getenv(provisionerNameKey)
 	if provisionerName == "" {
-		glog.Fatalf("environment variable %s is not set! Please set it.", provisionerNameKey)
+		log.Fatal().Msgf("environment variable %s is not set! Please set it.", provisionerNameKey)
 	}
 
 	// Create an InClusterConfig and use it to create a client for the controller
 	// to use to communicate with Kubernetes
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		glog.Fatalf("Failed to create config: %v", err)
+		log.Fatal().Msgf("Failed to create config: %v", err)
 	}
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		glog.Fatalf("Failed to create client: %v", err)
-	}
-
-	// The controller needs to know what the server version is because out-of-tree
-	// provisioners aren't officially supported until 1.5
-	serverVersion, err := clientset.Discovery().ServerVersion()
-	if err != nil {
-		glog.Fatalf("Error getting server version: %v", err)
+		log.Fatal().Msgf("Failed to create client: %v", err)
 	}
 
 	clientNFSProvisioner := &nfsProvisioner{
@@ -200,6 +194,10 @@ func main() {
 	}
 	// Start the provision controller which will dynamically provision efs NFS
 	// PVs
-	pc := controller.NewProvisionController(clientset, provisionerName, clientNFSProvisioner, serverVersion.GitVersion)
-	pc.Run(wait.NeverStop)
+	pc := controller.NewProvisionController(
+		clientset,
+		provisionerName,
+		clientNFSProvisioner,
+	)
+	pc.Run(context.Background())
 }
