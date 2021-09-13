@@ -37,8 +37,8 @@ import (
 )
 
 const (
-	provisionerNameKey      = "PROVISIONER_NAME"
-	namespacedAnnotationKey = "nfs-provisioner.legion.bouchaud.org/shared-with-key"
+	provisionerNameKey  = "PROVISIONER_NAME"
+	sharedAnnotationKey = "nfs-provisioner.legion.bouchaud.org/shared-with-key"
 )
 
 type nfsProvisioner struct {
@@ -59,24 +59,35 @@ func (p *nfsProvisioner) Provision(_ context.Context, options controller.Provisi
 	}
 	log.Info().Msgf("nfs provisioner: VolumeOptions %v", options)
 
-	var pvName string
+	var dirName string
 	var namespace string
+	var shared = false
 
 	namespace = options.PVC.Namespace
-	if _, ok := options.PVC.Annotations[namespacedAnnotationKey]; ok {
-		namespace = options.PVC.Annotations[namespacedAnnotationKey]
+
+	if _, ok := options.PVC.Annotations[sharedAnnotationKey]; ok {
+		shared = true
 	}
 
-	pvName = strings.Join([]string{namespace, options.PVC.Name, options.PVName}, "-")
+	if shared {
+		dirName = strings.Join([]string{"shared", options.PVC.Annotations[sharedAnnotationKey]}, "-")
+	} else {
+		dirName = strings.Join([]string{namespace, options.PVC.Name, options.PVName}, "-")
+	}
 
-	fullPath := filepath.Join(mountPath, pvName)
+	if *options.StorageClass.ReclaimPolicy != core.PersistentVolumeReclaimRetain && shared {
+		return nil, controller.ProvisioningFinished, errors.New("not allowed to create shared volatile pv.")
+	}
+
+	fullPath := filepath.Join(mountPath, dirName)
 	log.Info().Msgf("creating path %s", fullPath)
+
 	if err := os.MkdirAll(fullPath, 0777); err != nil {
 		return nil, controller.ProvisioningFinished, errors.New("unable to create directory to provision new pv: " + err.Error())
 	}
-	os.Chmod(fullPath, 0777)
 
-	path := filepath.Join(p.path, pvName)
+	// if path is already a directory, still chown
+	os.Chmod(fullPath, 0777)
 
 	pv := &core.PersistentVolume{
 		ObjectMeta: meta.ObjectMeta{
@@ -92,7 +103,7 @@ func (p *nfsProvisioner) Provision(_ context.Context, options controller.Provisi
 			PersistentVolumeSource: core.PersistentVolumeSource{
 				NFS: &core.NFSVolumeSource{
 					Server:   p.server,
-					Path:     path,
+					Path:     filepath.Join(p.path, dirName),
 					ReadOnly: false,
 				},
 			},
