@@ -1,20 +1,21 @@
-# Kubernetes NFS-Client Provisioner
+# nfs-client-provisioner
 
-This repository is an extract from [kubernetes-incubator/external-storage](https://github.com/kubernetes-incubator/external-storage/tree/e35bdf47/nfs-client) since the upstream has been archived/discontinued.
-
-**nfs-client** is an automatic provisioner that use your *existing and already configured* NFS server to support dynamic provisioning of Kubernetes Persistent Volumes via Persistent Volume Claims. Persistent volumes are provisioned as ``${namespace}-${pvcName}-${pvName}``.
+This repository is based on an extract from [kubernetes-incubator/external-storage](https://github.com/kubernetes-incubator/external-storage/tree/e35bdf47/nfs-client) since I needed it when the upstream got archived/discontinued and couldn't find a new upstream. Since the creation of this repository, the code base has diverged a bit to allow for volumes shared between namespaces (throught the use of "conflicting" nfs path).
 
 # Distribution
+## Docker
+Docker images of this projet are available for arm/v7, arm64/v8 and amd64 at [vbouchaud/nfs-client-provisioner](https://hub.docker.com/r/vbouchaud/nfs-client-provisioner) on docker hub and on quay.io at [vbouchaud/nfs-client-provisioner](https://quay.io/vbouchaud/nfs-client-provisioner).
 
-A docker image of this projet is available for arm/v7, arm64/v8, amd64 at [vbouchaud/nfs-client-provisioner](https://hub.docker.com/r/vbouchaud/nfs-client-provisioner) on docker hub. A mirror has been setup on quay.io at [vbouchaud/nfs-client-provisioner](https://quay.io/vbouchaud/nfs-client-provisioner)
+## Binary
+Binaries for the following OS and architectures are available on the release page:
+ - linux/arm64
+ - linux/arm
+ - linux/amd64
 
-# How to deploy nfs-client to your cluster.
+## Kubernetes
+### Helm Chart
 
-To note again, you must *already* have an NFS Server.
-
-## With Helm
-
-Follow the instructions for the stable helm chart maintained at https://github.com/helm/charts/tree/master/stable/nfs-client-provisioner
+Though the project forked, you can still follow the instructions for the stable helm chart maintained at https://github.com/helm/charts/tree/master/stable/nfs-client-provisioner
 
 The tl;dr is
 
@@ -22,43 +23,10 @@ The tl;dr is
 $ helm install stable/nfs-client-provisioner --set nfs.server=x.x.x.x --set nfs.path=/exported/path
 ```
 
-## Without Helm
+### Without Helm
+Get all of the files in the [deploy](https://github.com/kubernetes-incubator/external-storage/tree/master/nfs-client/deploy) directory of this repository.
 
-**Step 1: Get connection information for your NFS server**. Make sure your NFS server is accessible from your Kubernetes cluster and get the information you need to connect to it. At a minimum you will need its hostname.
-
-**Step 2: Get the NFS-Client Provisioner files**. To setup the provisioner you will download a set of YAML files, edit them to add your NFS server's connection information and then apply each with the ``kubectl`` / ``oc`` command. 
-
-Get all of the files in the [deploy](https://github.com/kubernetes-incubator/external-storage/tree/master/nfs-client/deploy) directory of this repository. These instructions assume that you have cloned the [external-storage](https://github.com/kubernetes-incubator/external-storage) repository and have a bash-shell open in the ``nfs-client`` directory.
-
-**Step 3: Setup authorization**. If your cluster has RBAC enabled or you are running OpenShift you must authorize the provisioner. If you are in a namespace/project other than "default" edit `deploy/rbac.yaml`.
-
-Kubernetes:
-
-```sh
-# Set the subject of the RBAC objects to the current namespace where the provisioner is being deployed
-$ NS=$(kubectl config get-contexts|grep -e "^\*" |awk '{print $5}')
-$ NAMESPACE=${NS:-default}
-$ sed -i'' "s/namespace:.*/namespace: $NAMESPACE/g" ./deploy/rbac.yaml
-$ kubectl create -f deploy/rbac.yaml
-```
-
-OpenShift:
-
-On some installations of OpenShift the default admin user does not have cluster-admin permissions. If these commands fail refer to the OpenShift documentation for **User and Role Management** or contact your OpenShift provider to help you grant the right permissions to your admin user. 
-
-```sh
-# Set the subject of the RBAC objects to the current namespace where the provisioner is being deployed
-$ NAMESPACE=`oc project -q`
-$ sed -i'' "s/namespace:.*/namespace: $NAMESPACE/g" ./deploy/rbac.yaml
-$ oc create -f deploy/rbac.yaml
-$ oadm policy add-scc-to-user hostmount-anyuid system:serviceaccount:$NAMESPACE:nfs-client-provisioner
-```
-
-**Step 4: Configure the NFS-Client provisioner**
-
-Note: To deploy to an ARM-based environment, use: `deploy/deployment-arm.yaml` instead, otherwise use `deploy/deployment.yaml`.
-
-Next you must edit the provisioner's deployment file to add connection information for your NFS server. Edit `deploy/deployment.yaml` and replace the two occurences of <YOUR NFS SERVER HOSTNAME> with your server's hostname.
+You must edit the provisioner's deployment file to add connection information for your NFS server. Edit `deploy/deployment.yaml` and replace the two occurences of <YOUR NFS SERVER HOSTNAME> with your server's hostname.
 
 ```yaml
 kind: Deployment
