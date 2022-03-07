@@ -1,4 +1,4 @@
-FROM golang:1.17.6-alpine AS build
+FROM golang:1.17.8-alpine AS build
 WORKDIR /usr/src
 RUN apk add --no-cache gcc=10.3.1_git20211027-r0 build-base=0.5-r2
 COPY go.mod ./
