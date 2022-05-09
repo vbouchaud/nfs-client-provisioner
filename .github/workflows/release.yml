@@ -16,9 +16,9 @@ jobs:
     strategy:
       matrix:
         target:
-          - "linux:arm64"
-          # - "linux:arm"
-          - "linux:amd64"
+          - "linux:arm64:"
+          - "linux:arm:"
+          - "linux:amd64:"
 
     steps:
       - name: Checkout
@@ -27,7 +27,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.17
+          go-version: 1.18
 
       - name: Prepare
         id: prep
@@ -64,22 +64,43 @@ jobs:
         run: |-
           export GOOS="$(echo ${{ matrix.target }} | cut -d':' -f1)"
           export GOARCH="$(echo ${{ matrix.target }} | cut -d':' -f2)"
+          export EXT="$(echo ${{ matrix.target }} | cut -d':' -f3)"
 
-          go build \
-            -trimpath \
-            -buildmode=pie \
-            -mod=readonly \
-            -modcacherw \
-            -o ${{ secrets.APP_NAME }}.${GOOS}.${GOARCH} \
-            -ldflags "\
-              -X ${{ github.repository }}/version.APPNAME=${{ secrets.APP_NAME }} \
-              -X ${{ github.repository }}/version.VERSION=${{ steps.prep.outputs.version }} \
-              -X ${{ github.repository }}/version.GOVERSION=${{ steps.prep.outputs.go-version }} \
-              -X ${{ github.repository }}/version.BUILDTIME=${{ steps.prep.outputs.buildtime }} \
-              -X ${{ github.repository }}/version.COMMITHASH=${{ github.sha }} \
-              -s -w"
+          if [ $GOARCH = arm ]; then
+            go build \
+              -trimpath \
+              -mod=readonly \
+              -modcacherw \
+              -o ${{ secrets.APP_NAME }}.${GOOS}.${GOARCH} \
+              -ldflags "\
+                -X ${{ github.repository }}/version.APPNAME=${{ secrets.APP_NAME }} \
+                -X ${{ github.repository }}/version.VERSION=${{ steps.prep.outputs.version }} \
+                -X ${{ github.repository }}/version.GOVERSION=${{ steps.prep.outputs.go-version }} \
+                -X ${{ github.repository }}/version.BUILDTIME=${{ steps.prep.outputs.buildtime }} \
+                -X ${{ github.repository }}/version.COMMITHASH=${{ github.sha }} \
+                -s -w"
+          else
+            go build \
+              -trimpath \
+              -buildmode=pie \
+              -mod=readonly \
+              -modcacherw \
+              -o ${{ secrets.APP_NAME }}.${GOOS}.${GOARCH} \
+              -ldflags "\
+                -X ${{ github.repository }}/version.APPNAME=${{ secrets.APP_NAME }} \
+                -X ${{ github.repository }}/version.VERSION=${{ steps.prep.outputs.version }} \
+                -X ${{ github.repository }}/version.GOVERSION=${{ steps.prep.outputs.go-version }} \
+                -X ${{ github.repository }}/version.BUILDTIME=${{ steps.prep.outputs.buildtime }} \
+                -X ${{ github.repository }}/version.COMMITHASH=${{ github.sha }} \
+                -s -w"
+          fi
 
-            sha256sum ${{ secrets.APP_NAME }}.${GOOS}.${GOARCH} > ${{ secrets.APP_NAME }}.${GOOS}.${GOARCH}.sha256sum.txt
+          if [ ! -z "${EXT}" ]; then
+              mv ${{ secrets.APP_NAME }}.${GOOS}.${GOARCH} ${{ secrets.APP_NAME }}${EXT}
+              sha256sum ${{ secrets.APP_NAME }}${EXT} > ${{ secrets.APP_NAME }}${EXT}.sha256sum.txt
+          else
+              sha256sum ${{ secrets.APP_NAME }}.${GOOS}.${GOARCH} > ${{ secrets.APP_NAME }}.${GOOS}.${GOARCH}.sha256sum.txt
+          fi
 
       - name: Extract release notes
         id: extract-release-notes
