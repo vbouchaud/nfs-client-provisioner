@@ -4,7 +4,7 @@ go 1.16
 
 require (
 	github.com/emicklei/go-restful v2.9.5+incompatible // indirect
-	github.com/rs/zerolog v1.27.0
+	github.com/rs/zerolog v1.28.0
 	k8s.io/api v0.25.0
 	k8s.io/apimachinery v0.25.0
 	k8s.io/client-go v0.25.0
