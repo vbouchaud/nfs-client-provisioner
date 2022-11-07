@@ -1,4 +1,4 @@
-FROM golang:1.19.0-alpine AS build
+FROM golang:1.19.3-alpine AS build
 
 WORKDIR /usr/src
 RUN apk add --no-cache \
