@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.3] - 2023-06-29
+- Upgrading go version to 1.20
+- Upgrading kubernetes libraries to 1.26.3
+- Bunch of dependency updates by @dependabot (`git log  --author=dependabot --pretty=oneline v3.2.2..v3.2.2`)
+
 ## [3.2.2] - 2021-09-13
 - Upgrading go version used for build
 - Upgrading kubernetes libraries to latests
